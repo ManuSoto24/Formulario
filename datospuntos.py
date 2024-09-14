@@ -3,7 +3,7 @@ import pandas as pd
 from fpdf import FPDF
 import os
 
-st.image(registro de demanda de terrenos (1).png", use_column_width=True)
+st.image("registro de demanda de terrenos (1).png", use_column_width=True)
 
 # Función para cargar la base de datos desde un archivo CSV
 def load_database(filename="database.csv"):
