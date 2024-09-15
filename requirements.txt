@@ -1,3 +1,5 @@
 streamlit
 fpdf
 pandas
+gspread
+oauth2client
