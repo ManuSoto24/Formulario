@@ -1,28 +1,18 @@
 import streamlit as st
-import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from fpdf import FPDF
-import os
 
-st.image("registro de demanda de terrenos (1).png", use_column_width=True)
+# Configurar la conexión con Google Sheets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("registro-de-terrenos-chml-04a9033cf905.json", scope)
+client = gspread.authorize(creds)
 
-# Función para cargar la base de datos desde un archivo CSV
-def load_database(filename="database.csv"):
-    if os.path.exists(filename):
-        return pd.read_csv(filename).to_dict('records')
-    else:
-        return []
-
-# Función para guardar la base de datos en un archivo CSV
-def save_database(database, filename="database.csv"):
-    df = pd.DataFrame(database)
-    df.to_csv(filename, index=False)
-
-# Cargar la base de datos al iniciar la aplicación
-if 'database' not in st.session_state:
-    st.session_state.database = load_database()
+# Abrir la hoja de cálculo y seleccionar la hoja
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1pJ9rjiED41Zh4sENtTKzi3kfzFkP8LnIcQBJm0Xbt6Y/edit?usp=sharing").sheet1
 
 # Función para generar el PDF
-def generate_pdf(name, surname, id_number, total_score):
+def generate_pdf(name, surname, id_number, total_score, user_data):
     pdf = FPDF()
     pdf.add_page()
     
@@ -40,6 +30,13 @@ def generate_pdf(name, surname, id_number, total_score):
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(200, 10, f"Puntaje Total: {total_score}", ln=True)
     
+    # Información de las categorías
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, "Detalles por Categoría:", ln=True)
+    for key, value in user_data.items():
+        if key not in ["Nombre", "Apellido", "Documento de Identidad", "Puntaje Total"]:
+            pdf.cell(200, 10, f"{key}: {value}", ln=True)
+    
     # Guardar el PDF
     pdf_output = f"resultado_{name}_{surname}.pdf"
     pdf.output(pdf_output)
@@ -47,7 +44,7 @@ def generate_pdf(name, surname, id_number, total_score):
     return pdf_output
 
 # Título de la Aplicación
-st.title("Demanda de Terrenos by José Soto -si funciona la vendo")
+st.title("Demanda de Terrenos by José Soto - si funciona la vendo")
 
 # Botones de sesión
 if st.button("Abrir Sesión"):
@@ -56,8 +53,7 @@ if st.button("Abrir Sesión"):
 
 if st.button("Cerrar Sesión"):
     st.session_state.logged_in = False
-    save_database(st.session_state.database)  # Guardar la base de datos al cerrar sesión
-    st.success("Sesión cerrada. Los datos se han guardado.")
+    st.success("Sesión cerrada.")
 
 # Mostrar un mensaje si no se ha iniciado sesión
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
@@ -140,40 +136,37 @@ else:
         }
     }
 
-    # Inicializar una variable para el puntaje total
+    # Inicializar una variable para el puntaje total y un diccionario para guardar las selecciones
     total_score = 0
+    user_data = {
+        "Nombre": name,
+        "Apellido": surname,
+        "Documento de Identidad": id_number
+    }
 
-    # Crear listas desplegables para cada criterio
+    # Crear listas desplegables para cada criterio y capturar las selecciones
     for criterion, options in criteria.items():
         selected_option = st.selectbox(f'{criterion}', options.keys())
         total_score += options[selected_option]
+        user_data[criterion] = selected_option
 
-    # Mostrar el puntaje total
-    st.write(f"Puntaje Total: {total_score}")
+    # Agregar el puntaje total al diccionario
+    user_data["Puntaje Total"] = total_score
 
-    # Guardar datos y añadirlos a la base de datos
+    # Guardar los datos en la hoja de cálculo
     if st.button("Guardar y agregar a la base de datos"):
         if name and surname and id_number:
-            st.session_state.database.append({
-                "Nombre": name,
-                "Apellido": surname,
-                "Documento de Identidad": id_number,
-                "Puntaje Total": total_score
-            })
+            # Convertir el diccionario a una lista ordenada para la hoja de cálculo
+            row = [user_data[key] for key in user_data.keys()]
+            sheet.append_row(row)
             st.success("Datos guardados exitosamente.")
         else:
             st.error("Por favor, completa todos los campos de datos personales.")
 
-    # Mostrar la base de datos
-    if st.session_state.database:
-        df = pd.DataFrame(st.session_state.database)
-        st.write("Base de Datos:")
-        st.dataframe(df)
-
     # Generar PDF y ofrecerlo para descargar
     if st.button("Generar PDF"):
         if name and surname and id_number:
-            pdf_file = generate_pdf(name, surname, id_number, total_score)
+            pdf_file = generate_pdf(name, surname, id_number, total_score, user_data)
             with open(pdf_file, "rb") as file:
                 st.download_button(label="Descargar PDF", data=file, file_name=pdf_file, mime="application/pdf")
         else:
